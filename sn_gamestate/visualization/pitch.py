@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from functools import lru_cache
 from pathlib import Path
 
 from tracklab.utils.cv2 import draw_text
@@ -23,6 +24,13 @@ class Radar(ImageVisualizer):
         for detection, group in zip([detections_pred, detections_gt], ["Predictions", "Ground Truth"]):
             if detection is not None and "bbox_pitch" in detection:
                 draw_radar_view(image, detection, group=group)
+
+class Minimap(ImageVisualizer):
+    def draw_frame(self, image, detections_pred, detections_gt, image_pred, image_gt):
+        image_height, image_width = image.shape[:2]
+        image[:] = minimap_background(image_width, image_height)
+        if detections_pred is not None and "bbox_pitch" in detections_pred:
+            draw_minimap_view(image, detections_pred)
 
 def draw_pitch(
     patch,
@@ -134,3 +142,53 @@ def draw_radar_view(patch, detections, scale=4, delta=32, group="Ground Truth"):
                 color=color,
                 thickness=-1
             )
+
+@lru_cache(maxsize=8)
+def minimap_background(image_width, image_height):
+    background = np.full((image_height, image_width, 3), (34, 120, 44), dtype=np.uint8)
+    if pitch_file.is_file():
+        pitch = cv2.imread(str(pitch_file))
+        pitch = cv2.cvtColor(pitch, cv2.COLOR_BGR2RGB)
+    else:
+        pitch = np.full((780, 1250, 3), (63, 147, 78), dtype=np.uint8)
+    pitch_height, pitch_width = pitch.shape[:2]
+    scale = min(image_width / pitch_width, image_height / pitch_height)
+    resized_width = max(1, int(round(pitch_width * scale)))
+    resized_height = max(1, int(round(pitch_height * scale)))
+    pitch = cv2.resize(pitch, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
+    top = (image_height - resized_height) // 2
+    left = (image_width - resized_width) // 2
+    background[top:top + resized_height, left:left + resized_width] = pitch
+    return background
+
+def draw_minimap_view(patch, detections):
+    image_height, image_width = patch.shape[:2]
+    pitch_width = 105 + 2 * 10
+    pitch_height = 68 + 2 * 5
+    scale = min(image_width / pitch_width, image_height / pitch_height)
+    x_center = image_width / 2
+    y_center = image_height / 2
+    radius = max(6, int(round(scale * 0.75)))
+    border = max(2, radius // 3)
+    for _, detection in detections.iterrows():
+        if "role" in detection and detection.role == "ball":
+            continue
+        bbox_pitch = detection.get("bbox_pitch")
+        if not isinstance(bbox_pitch, dict):
+            continue
+        x_middle = np.clip(bbox_pitch["x_bottom_middle"], -pitch_width, pitch_width)
+        y_middle = np.clip(bbox_pitch["y_bottom_middle"], -pitch_height, pitch_height)
+        center = (
+            int(round(x_center + x_middle * scale)),
+            int(round(y_center + y_middle * scale)),
+        )
+        if "role" in detection and detection.role == "referee":
+            color = (238, 210, 2)
+        elif "team" in detection and detection.team == "left":
+            color = (0, 0, 255)
+        elif "team" in detection and detection.team == "right":
+            color = (255, 0, 0)
+        else:
+            color = (255, 255, 255)
+        cv2.circle(patch, center, radius + border, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
+        cv2.circle(patch, center, radius, color, thickness=-1, lineType=cv2.LINE_AA)

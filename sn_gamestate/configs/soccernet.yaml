@@ -42,7 +42,7 @@ experiment_name: "sn-gamestate"
 
 # Path definitions
 home_dir: "${oc.env:HOME}"
-data_dir: "${project_dir}/data"
+data_dir: "/home/chenyu/workplace/sn-gamestate/data"
 model_dir: "${project_dir}/pretrained_models"
 
 # Machine configuration
@@ -51,13 +51,13 @@ use_wandb: False
 use_rich: True
 
 modules: # Allows module-specific batch_size and other configuration
-  bbox_detector: {batch_size: 8}
-  pose_bottomup: {batch_size: 8}
-  reid: {batch_size: 64}
-  track: {batch_size: 64}
+  bbox_detector: {batch_size: 16}
+  pose_bottomup: {batch_size: 16}
+  reid: {batch_size: 16}
+  track: {batch_size: 16}
   pitch: {batch_size: 1}
   calibration: {batch_size: 1}
-  jersey_number_detect: {batch_size: 8}
+  jersey_number_detect: {batch_size: 16}
 
 # Flags
 test_tracking: True
