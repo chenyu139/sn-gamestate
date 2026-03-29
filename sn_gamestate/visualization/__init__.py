@@ -1,2 +1,2 @@
-from .pitch import Pitch, Radar, Minimap
+from .pitch import Pitch, Radar, Minimap, ComparisonMinimap
 from .players import Player, PlayerEllipse, CompletePlayerEllipse

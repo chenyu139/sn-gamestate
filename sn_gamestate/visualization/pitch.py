@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import pandas as pd
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,6 +32,16 @@ class Minimap(ImageVisualizer):
         image[:] = minimap_background(image_width, image_height)
         if detections_pred is not None and "bbox_pitch" in detections_pred:
             draw_minimap_view(image, detections_pred)
+
+class ComparisonMinimap(ImageVisualizer):
+    def draw_frame(self, image, detections_pred, detections_gt, image_pred, image_gt):
+        panel_height, panel_width = image.shape[:2]
+        image[:] = compose_comparison_view(
+            image,
+            detections_pred,
+            output_width=panel_width,
+            output_height=panel_height,
+        )
 
 def draw_pitch(
     patch,
@@ -192,3 +203,99 @@ def draw_minimap_view(patch, detections):
             color = (255, 255, 255)
         cv2.circle(patch, center, radius + border, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
         cv2.circle(patch, center, radius, color, thickness=-1, lineType=cv2.LINE_AA)
+
+def compose_comparison_view(image, detections, output_width, output_height, separator_width=0):
+    left_panel_width = max(1, (output_width - separator_width) // 2)
+    right_panel_width = max(1, output_width - separator_width - left_panel_width)
+    left_panel = fit_image_to_panel(image, left_panel_width, output_height)
+    draw_detection_boxes(left_panel, detections)
+    right_panel = minimap_background(right_panel_width, output_height).copy()
+    if detections is not None and "bbox_pitch" in detections:
+        draw_minimap_view(right_panel, detections)
+    draw_panel_title(left_panel, "Video + Boxes")
+    draw_panel_title(right_panel, "Pitch Map")
+    if separator_width > 0:
+        separator = np.full((output_height, separator_width, 3), (16, 16, 16), dtype=np.uint8)
+        return np.concatenate([left_panel, separator, right_panel], axis=1)
+    return np.concatenate([left_panel, right_panel], axis=1)
+
+def fit_image_to_panel(image, panel_width, panel_height):
+    source_height, source_width = image.shape[:2]
+    scale = min(panel_width / source_width, panel_height / source_height)
+    resized_width = max(1, int(round(source_width * scale)))
+    resized_height = max(1, int(round(source_height * scale)))
+    resized = cv2.resize(image, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR)
+    panel = np.full((panel_height, panel_width, 3), (18, 18, 18), dtype=np.uint8)
+    top = (panel_height - resized_height) // 2
+    left = (panel_width - resized_width) // 2
+    panel[top:top + resized_height, left:left + resized_width] = resized
+    return panel
+
+def draw_detection_boxes(image, detections):
+    if detections is None or "bbox_ltwh" not in detections:
+        return
+    for _, detection in detections.iterrows():
+        bbox = detection.get("bbox_ltwh")
+        if bbox is None or len(bbox) != 4:
+            continue
+        x, y, w, h = [int(round(float(v))) for v in bbox]
+        if w <= 1 or h <= 1:
+            continue
+        color = detection_color(detection)
+        cv2.rectangle(image, (x, y), (x + w, y + h), color, thickness=2, lineType=cv2.LINE_AA)
+        label = detection_label(detection)
+        if label:
+            draw_text(
+                image,
+                label,
+                (x, max(0, y - 6)),
+                fontFace=1,
+                fontScale=0.75,
+                thickness=1,
+                alignH="l",
+                alignV="b",
+                color_bg=color,
+                color_txt=None,
+                alpha_bg=0.6,
+            )
+
+def draw_panel_title(image, text):
+    draw_text(
+        image,
+        text,
+        (20, 20),
+        fontFace=1,
+        fontScale=1.0,
+        thickness=2,
+        alignH="l",
+        alignV="t",
+        color_bg=(0, 0, 0),
+        color_txt=(255, 255, 255),
+        alpha_bg=0.5,
+    )
+
+def detection_color(detection):
+    if "role" in detection and detection.role == "referee":
+        return (238, 210, 2)
+    if "role" in detection and detection.role == "ball":
+        return (255, 255, 255)
+    if "team" in detection and detection.team == "left":
+        return (0, 0, 255)
+    if "team" in detection and detection.team == "right":
+        return (255, 0, 0)
+    if "role" in detection and detection.role == "goalkeeper":
+        return (0, 255, 255)
+    return (0, 255, 0)
+
+def detection_label(detection):
+    tokens = []
+    track_id = detection.get("track_id")
+    if not pd.isna(track_id):
+        tokens.append(f"ID {int(track_id)}")
+    jersey_number = detection.get("jersey_number")
+    if isinstance(jersey_number, str) and jersey_number.strip():
+        tokens.append(f"JN {jersey_number}")
+    role = detection.get("role")
+    if isinstance(role, str) and role:
+        tokens.append(role.upper())
+    return " | ".join(tokens)
