@@ -27,6 +27,9 @@ class Radar(ImageVisualizer):
                 draw_radar_view(image, detection, group=group)
 
 class Minimap(ImageVisualizer):
+    def preproces(self, detections_pred, detections_gt, image_pred, image_gt):
+        temporal_smooth_detections(detections_pred)
+
     def draw_frame(self, image, detections_pred, detections_gt, image_pred, image_gt):
         image_height, image_width = image.shape[:2]
         image[:] = minimap_background(image_width, image_height)
@@ -34,6 +37,9 @@ class Minimap(ImageVisualizer):
             draw_minimap_view(image, detections_pred)
 
 class ComparisonMinimap(ImageVisualizer):
+    def preproces(self, detections_pred, detections_gt, image_pred, image_gt):
+        temporal_smooth_detections(detections_pred)
+
     def draw_frame(self, image, detections_pred, detections_gt, image_pred, image_gt):
         panel_height, panel_width = image.shape[:2]
         image[:] = compose_comparison_view(
@@ -207,13 +213,12 @@ def draw_minimap_view(patch, detections):
 def compose_comparison_view(image, detections, output_width, output_height, separator_width=0):
     left_panel_width = max(1, (output_width - separator_width) // 2)
     right_panel_width = max(1, output_width - separator_width - left_panel_width)
-    left_panel = fit_image_to_panel(image, left_panel_width, output_height)
-    draw_detection_boxes(left_panel, detections)
+    boxed_image = image.copy()
+    draw_detection_ellipses(boxed_image, detections)
+    left_panel = fit_image_to_panel(boxed_image, left_panel_width, output_height)
     right_panel = minimap_background(right_panel_width, output_height).copy()
     if detections is not None and "bbox_pitch" in detections:
         draw_minimap_view(right_panel, detections)
-    draw_panel_title(left_panel, "Video + Boxes")
-    draw_panel_title(right_panel, "Pitch Map")
     if separator_width > 0:
         separator = np.full((output_height, separator_width, 3), (16, 16, 16), dtype=np.uint8)
         return np.concatenate([left_panel, separator, right_panel], axis=1)
@@ -230,6 +235,64 @@ def fit_image_to_panel(image, panel_width, panel_height):
     left = (panel_width - resized_width) // 2
     panel[top:top + resized_height, left:left + resized_width] = resized
     return panel
+
+def temporal_smooth_detections(detections, bbox_alpha=0.45, pitch_alpha=0.25, max_gap=5):
+    if detections is None or "track_id" not in detections or "_vis_smoothed" in detections:
+        return detections
+    if "image_id" not in detections:
+        detections["_vis_smoothed"] = True
+        return detections
+    for track_id, tracklet in detections.groupby("track_id", sort=False):
+        if pd.isna(track_id):
+            continue
+        tracklet = tracklet.sort_values("image_id")
+        previous_bbox = None
+        previous_pitch = None
+        previous_image_id = None
+        for index, detection in tracklet.iterrows():
+            image_id = image_order_value(detection.get("image_id"))
+            if previous_image_id is not None and image_id - previous_image_id > max_gap:
+                previous_bbox = None
+                previous_pitch = None
+            bbox = detection.get("bbox_ltwh")
+            if bbox is not None and len(bbox) == 4:
+                current_bbox = np.asarray(bbox, dtype=np.float32)
+                if previous_bbox is None:
+                    smoothed_bbox = current_bbox
+                else:
+                    smoothed_bbox = previous_bbox + bbox_alpha * (current_bbox - previous_bbox)
+                detections.at[index, "bbox_ltwh"] = smoothed_bbox.tolist()
+                previous_bbox = smoothed_bbox
+            bbox_pitch = detection.get("bbox_pitch")
+            if isinstance(bbox_pitch, dict):
+                current_pitch = np.asarray(
+                    [
+                        bbox_pitch["x_bottom_middle"],
+                        bbox_pitch["y_bottom_middle"],
+                    ],
+                    dtype=np.float32,
+                )
+                if previous_pitch is None:
+                    smoothed_pitch = current_pitch
+                else:
+                    smoothed_pitch = previous_pitch + pitch_alpha * (current_pitch - previous_pitch)
+                smoothed_bbox_pitch = dict(bbox_pitch)
+                smoothed_bbox_pitch["x_bottom_middle"] = float(smoothed_pitch[0])
+                smoothed_bbox_pitch["y_bottom_middle"] = float(smoothed_pitch[1])
+                detections.at[index, "bbox_pitch"] = smoothed_bbox_pitch
+                previous_pitch = smoothed_pitch
+            previous_image_id = image_id
+    detections["_vis_smoothed"] = True
+    return detections
+
+def image_order_value(image_id):
+    if isinstance(image_id, (int, np.integer, float, np.floating)):
+        return int(image_id)
+    image_text = str(image_id)
+    digits = "".join(char for char in Path(image_text).stem if char.isdigit())
+    if digits:
+        return int(digits)
+    return 0
 
 def draw_detection_boxes(image, detections):
     if detections is None or "bbox_ltwh" not in detections:
@@ -253,6 +316,49 @@ def draw_detection_boxes(image, detections):
                 fontScale=0.75,
                 thickness=1,
                 alignH="l",
+                alignV="b",
+                color_bg=color,
+                color_txt=None,
+                alpha_bg=0.6,
+            )
+
+def draw_detection_ellipses(image, detections):
+    if detections is None or "bbox_ltwh" not in detections:
+        return
+    for _, detection in detections.iterrows():
+        if detection.get("role") == "ball":
+            continue
+        bbox = detection.get("bbox_ltwh")
+        if bbox is None or len(bbox) != 4:
+            continue
+        x, y, w, h = [int(round(float(v))) for v in bbox]
+        if w <= 1 or h <= 1:
+            continue
+        color = detection_color(detection)
+        center = (int(x + w / 2), int(y + h))
+        ellipse_width = max(10, int(round(0.58 * w)))
+        ellipse_height = max(4, int(round(0.20 * w)))
+        cv2.ellipse(
+            image,
+            center=center,
+            axes=(ellipse_width, ellipse_height),
+            angle=0.0,
+            startAngle=-20.0,
+            endAngle=200.0,
+            color=color,
+            thickness=2,
+            lineType=cv2.LINE_AA,
+        )
+        label = detection_overlay_text(detection)
+        if label:
+            draw_text(
+                image,
+                label,
+                (center[0], center[1] - max(8, ellipse_height + 6)),
+                fontFace=1,
+                fontScale=0.72,
+                thickness=1,
+                alignH="c",
                 alignV="b",
                 color_bg=color,
                 color_txt=None,
@@ -299,3 +405,31 @@ def detection_label(detection):
     if isinstance(role, str) and role:
         tokens.append(role.upper())
     return " | ".join(tokens)
+
+def detection_overlay_text(detection):
+    role = detection.get("role")
+    if role == "ball":
+        return ""
+    for key in ["jn_tracklet", "jersey_number"]:
+        jersey_number = detection.get(key)
+        if isinstance(jersey_number, str):
+            if jersey_number.strip():
+                return jersey_number.strip()
+        elif not pd.isna(jersey_number):
+            return str(int(jersey_number))
+    track_id = detection.get("track_id")
+    if role == "goalkeeper":
+        if not pd.isna(track_id):
+            return f"GK {int(track_id)}"
+        return "GK"
+    if role == "referee":
+        if not pd.isna(track_id):
+            return f"RE {int(track_id)}"
+        return "RE"
+    if role == "other":
+        if not pd.isna(track_id):
+            return f"OT {int(track_id)}"
+        return "OT"
+    if not pd.isna(track_id):
+        return str(int(track_id))
+    return ""

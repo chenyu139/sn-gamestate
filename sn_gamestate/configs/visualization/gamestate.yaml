@@ -14,8 +14,14 @@ visualizers:
   # - Players: Player, PlayerEllipse, CompletePlayerEllipse
   # - Pitch: Pitch
   # - Radar: Radar
-  minimap:
-    _target_: sn_gamestate.visualization.Minimap
+  frame_counter:
+    _target_: tracklab.visualization.FrameCount
+  pitch:
+    _target_: sn_gamestate.visualization.Pitch
+  players:
+    _target_: sn_gamestate.visualization.CompletePlayerEllipse
+  radar:
+    _target_: sn_gamestate.visualization.Radar
 
 # Color settings for visualization.
 colors:

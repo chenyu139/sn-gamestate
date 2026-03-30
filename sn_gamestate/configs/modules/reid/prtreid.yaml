@@ -5,7 +5,7 @@ defaults:
 
 batch_size: 32
 job_id: "${oc.env:SLURM_JOBID,0}" # TODO
-save_path: reid
+save_path: "${hydra:runtime.output_dir}/reid"
 use_keypoints_visibility_scores_for_reid: False
 training_enabled: False
 cfg:

@@ -86,6 +86,14 @@ class PRTReId(DetectionLevelModule):
         self.cfg.data.save_dir = save_path
         self.cfg.project.job_id = job_id
         self.cfg.use_gpu = torch.cuda.is_available()
+        save_dir = Path(self.cfg.data.save_dir)
+        if (save_dir / str(self.cfg.project.job_id)).exists():
+            suffix = 1
+            candidate = save_dir.parent / f"{save_dir.name}-{suffix}"
+            while (candidate / str(self.cfg.project.job_id)).exists():
+                suffix += 1
+                candidate = save_dir.parent / f"{save_dir.name}-{suffix}"
+            self.cfg.data.save_dir = str(candidate)
         self.cfg = build_config(config=self.cfg)
         self.test_embeddings = self.cfg.model.bpbreid.test_embeddings
         # Register the PoseTrack21ReID dataset to Torchreid that will be instantiated when building Torchreid engine.

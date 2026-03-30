@@ -1,0 +1,22 @@
+defaults:
+  - soccernet
+  - override dataset: youtube
+  - _self_
+
+experiment_name: "sn-gamestate-custom-video"
+eval_tracking: False
+
+dataset:
+  video_path: ???
+  dataset_path: ${data_dir}
+  eval_set: "val"
+  nvid: 1
+  nframes: -1
+
+state:
+  save_file: "states/${experiment_name}.pklz"
+
+visualization:
+  _target_: sn_gamestate.visualization.GameStateVisualizationEngine
+  cfg:
+    save_videos: True

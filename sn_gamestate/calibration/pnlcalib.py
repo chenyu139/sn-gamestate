@@ -180,8 +180,9 @@ class PnLCalib(ImageLevelModule):
         return image
 
     def process(self, batch: Any, detections: pd.DataFrame, metadatas: pd.DataFrame):
-        keypoints = metadatas["keypoints"][0]
-        lines = metadatas["lines_det"][0]
+        metadata = metadatas.iloc[0] if isinstance(metadatas, pd.DataFrame) else metadatas
+        keypoints = metadata["keypoints"]
+        lines = metadata["lines_det"]
 
         self.cam.update(keypoints, lines)
         final_dict = self.cam.heuristic_voting_ground(refine_lines=self.refine_lines)
@@ -206,7 +207,7 @@ class PnLCalib(ImageLevelModule):
                     camera_predictions = {}
                     detections["bbox_pitch"] = None
             return detections[["bbox_pitch"]], pd.DataFrame([
-                pd.Series({"parameters": camera_predictions}, name=metadatas.iloc[0].name)
+                pd.Series({"parameters": camera_predictions}, name=metadata.name)
             ])
         else:
             if h is not None:
@@ -217,7 +218,7 @@ class PnLCalib(ImageLevelModule):
                 detections["bbox_pitch"] = None
 
             return detections[["bbox_pitch"]], pd.DataFrame([
-                pd.Series({"parameters": camera_predictions}, name=metadatas.iloc[0].name)
+                pd.Series({"parameters": camera_predictions}, name=metadata.name)
             ])
 
 

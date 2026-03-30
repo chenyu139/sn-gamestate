@@ -176,7 +176,8 @@ class NBJW_Calib(ImageLevelModule):
         return image
 
     def process(self, batch: Any, detections: pd.DataFrame, metadatas: pd.DataFrame):
-        predictions = metadatas["keypoints"][0]
+        metadata = metadatas.iloc[0] if isinstance(metadatas, pd.DataFrame) else metadatas
+        predictions = metadata["keypoints"]
 
         self.cam.update(predictions)
         h = self.cam.get_homography_from_ground_plane(use_ransac=50, inverse=True)
@@ -195,7 +196,7 @@ class NBJW_Calib(ImageLevelModule):
                     camera_predictions = {}
                     detections["bbox_pitch"] = None
             return detections[["bbox_pitch"]], pd.DataFrame([
-                pd.Series({"parameters": camera_predictions}, name=metadatas.iloc[0].name)
+                pd.Series({"parameters": camera_predictions}, name=metadata.name)
             ])
         else:
             if h is not None:
@@ -206,7 +207,7 @@ class NBJW_Calib(ImageLevelModule):
                 detections["bbox_pitch"] = None
 
             return detections[["bbox_pitch"]], pd.DataFrame([
-                pd.Series({"parameters": camera_predictions}, name=metadatas.iloc[0].name)
+                pd.Series({"parameters": camera_predictions}, name=metadata.name)
             ])
 
 
