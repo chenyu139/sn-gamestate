@@ -13,10 +13,19 @@ dataset:
   nvid: 1
   nframes: -1
 
+modules:
+  bbox_detector:
+    cfg:
+      min_confidence: 0.15
+
 state:
   save_file: "states/${experiment_name}.pklz"
 
 visualization:
   _target_: sn_gamestate.visualization.GameStateVisualizationEngine
+  save_videos: True
+  colors:
+    team:
+      no_team: [255, 255, 255]
   cfg:
     save_videos: True
