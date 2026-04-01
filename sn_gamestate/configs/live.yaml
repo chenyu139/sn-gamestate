@@ -1,0 +1,102 @@
+defaults:
+  - soccernet
+  - _self_
+
+experiment_name: "sn-gamestate-live"
+eval_tracking: False
+test_tracking: True
+
+pipeline:
+  - bbox_detector
+  - track
+
+dataset:
+  _target_: sn_gamestate.live.LiveStreamDataset
+  dataset_path: ${data_dir}
+  source: ???
+  stream_name: live
+  eval_set: live
+  nvid: -1
+  nframes: -1
+  vids_dict: {}
+
+eval:
+  _target_: sn_gamestate.live.NoOpEvaluator
+
+engine:
+  _target_: sn_gamestate.live.LiveTrackingEngine
+  num_workers: ${num_cores}
+  target_fps: 15
+  max_frames: -1
+  visualization_miss_tolerance: 4
+  detection_interval: 3
+  drop_old_frames: True
+  source_buffer_size: 1
+  read_timeout_ms: 1000
+  max_history_frames: 120
+  callbacks:
+    progress:
+      _target_: tracklab.callbacks.Progressbar
+      use_rich: ${use_rich}
+    vis: ${visualization}
+
+visualization:
+  _target_: sn_gamestate.live.LiveVisualizationCallback
+  show_window: False
+  save_video: False
+  output_path: "outputs/live/${experiment_name}.mp4"
+  video_fps: ${engine.target_fps}
+  window_name: "${experiment_name}"
+  display_track_id: True
+  display_jersey: False
+  display_role: False
+  display_team: False
+  throttle_ms: 1
+  rtsp_url: null
+  ffmpeg_binary: ffmpeg
+  rtsp_transport: tcp
+  video_codec: libx264
+  video_preset: ultrafast
+  video_tune: zerolatency
+  video_bitrate: "4M"
+  colors:
+    cmap: 22
+    default:
+      no_id: [0, 255, 0]
+      prediction: track_id
+      ground_truth: null
+    team:
+      no_team: [255, 255, 255]
+      prediction:
+        left: [0, 0, 255]
+        right: [255, 0, 0]
+        referee: [238, 210, 2]
+      ground_truth:
+        left: [0, 255, 0]
+        right: [0, 255, 0]
+        referee: [255, 255, 0]
+
+modules:
+  bbox_detector:
+    cfg:
+      path_to_checkpoint: "${model_dir}/yolo/yolo11n.pt"
+      min_confidence: 0.25
+      imgsz: 640
+      iou: 0.7
+      max_det: 48
+  track:
+    _target_: tracklab.wrappers.track.oc_sort_api.OCSORT
+    cfg:
+      min_confidence: 0.25
+      hyperparams:
+        asso_func: giou
+        delta_t: 1
+        det_thresh: 0.2
+        inertia: 0.2
+        iou_threshold: 0.25
+        max_age: 20
+        min_hits: 1
+        use_byte: true
+
+state:
+  save_file: null

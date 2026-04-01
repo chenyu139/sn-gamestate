@@ -1,0 +1,11 @@
+logLevel: debug
+rtspAddress: 0.0.0.0:9554
+rtpAddress: 0.0.0.0:9000
+rtcpAddress: 0.0.0.0:9001
+rtmpAddress: 0.0.0.0:2935
+hlsAddress: 0.0.0.0:9888
+webrtcAddress: 0.0.0.0:9889
+webrtcLocalUDPAddress: 0.0.0.0:9189
+srtAddress: 0.0.0.0:9890
+paths:
+  all:

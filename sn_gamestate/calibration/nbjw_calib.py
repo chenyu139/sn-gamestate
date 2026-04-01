@@ -183,7 +183,12 @@ class NBJW_Calib(ImageLevelModule):
         h = self.cam.get_homography_from_ground_plane(use_ransac=50, inverse=True)
         if self.use_prev_homography:
             if h is not None:
-                camera_predictions = self.cam.heuristic_voting()["cam_params"]
+                voted_camera = self.cam.heuristic_voting()
+                camera_predictions = (
+                    voted_camera["cam_params"]
+                    if voted_camera is not None and "cam_params" in voted_camera
+                    else (self.last_params or {})
+                )
                 detections["bbox_pitch"] = detections.bbox.ltrb().apply(get_bbox_pitch(h))
                 self.last_h = h
                 self.last_params = camera_predictions
@@ -200,7 +205,12 @@ class NBJW_Calib(ImageLevelModule):
             ])
         else:
             if h is not None:
-                camera_predictions = self.cam.heuristic_voting()['cam_params']
+                voted_camera = self.cam.heuristic_voting()
+                camera_predictions = (
+                    voted_camera["cam_params"]
+                    if voted_camera is not None and "cam_params" in voted_camera
+                    else {}
+                )
                 detections["bbox_pitch"] = detections.bbox.ltrb().apply(get_bbox_pitch(h))
             else:
                 camera_predictions = {}

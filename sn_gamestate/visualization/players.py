@@ -4,6 +4,7 @@ import pandas as pd
 from distinctipy import get_rgb256
 
 from tracklab.visualization import Visualizer, DefaultDetection, EllipseDetection, get_fixed_colors
+from tracklab.utils.coordinates import ltwh_to_ltrb
 from tracklab.utils.cv2 import draw_text
 
 import logging
@@ -21,12 +22,13 @@ class TeamVisualizer(Visualizer):
         assert self.colors is not None
         if color_type not in self.colors:
             raise ValueError(f"{color_type} not declared in the colors dict for visualization")
-        if pd.isna(detection.track_id):
+        track_id = getattr(detection, "track_id", None)
+        if pd.isna(track_id):
             color = self.colors[color_type].no_id
         else:
             cmap_key = "prediction" if is_prediction else "ground_truth"
             if self.colors[color_type][cmap_key] == "track_id":
-                color = self.cmap[(int(detection.track_id) - 1) % len(self.cmap)]
+                color = self.cmap[(int(track_id) - 1) % len(self.cmap)]
             elif self.colors[color_type][cmap_key] == "team":
                 if hasattr(detection, "role") and detection.role == "referee":
                     return self.colors["team"][cmap_key]["referee"]
@@ -60,7 +62,16 @@ class CompletePlayerEllipse(TeamVisualizer, EllipseDetection):
             if detection is not None:
                 color = self.color(detection, is_prediction=is_pred)
                 if color:
-                    x1, y1, x2, y2 = detection.bbox.ltrb()
+                    bbox_ltwh = getattr(detection, "track_bbox_kf_ltwh", None)
+                    if (
+                        bbox_ltwh is not None
+                        and hasattr(bbox_ltwh, "__len__")
+                        and len(bbox_ltwh) == 4
+                        and not pd.isna(list(bbox_ltwh)).any()
+                    ):
+                        x1, y1, x2, y2 = ltwh_to_ltrb(bbox_ltwh, rounded=True)
+                    else:
+                        x1, y1, x2, y2 = detection.bbox.ltrb()
                     center = (int((x1 + x2) / 2), int(y2))
                     width = x2 - x1
                     cv2.ellipse(
@@ -74,7 +85,7 @@ class CompletePlayerEllipse(TeamVisualizer, EllipseDetection):
                         thickness=2,
                         lineType=cv2.LINE_AA,
                     )
-                    txt = [pprint(v, getattr(detection, v, lambda: None)) for v in self.display_list]
+                    txt = [pprint(v, getattr(detection, v, None)) for v in self.display_list]
                     txt = "\n".join([v for v in txt if v != ""])
                     draw_text(
                         image,
